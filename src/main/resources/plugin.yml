@@ -1,0 +1,22 @@
+name: SkinsPlus
+version: '${project.version}'
+main: com.skinsplus.plugin.SkinsPlusPlugin
+api-version: '26.3'
+author: donnie1337
+description: Sistema de skins para Paper 26.3 com cache e suporte a servidores offline-mode.
+
+commands:
+  skin:
+    description: Gerencia sua skin.
+    usage: "/skin ajuda"
+    aliases: [skins]
+    permission: skinsplus.use
+    permission-message: "§cVocê não tem permissão para usar este comando."
+
+permissions:
+  skinsplus.use:
+    description: Permite usar os comandos de skin.
+    default: true
+  skinsplus.admin:
+    description: Permite usar comandos administrativos do SkinsPlus.
+    default: op
