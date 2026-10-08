@@ -1,0 +1,11 @@
+# SkinsPlus
+# O NameMC será usado como base de catálogo/referência de skins.
+# Consultas externas deverão ser assíncronas e armazenadas em cache.
+
+cache:
+  enabled: true
+  ttl-hours: 24
+
+namemc:
+  enabled: true
+  base-url: "https://namemc.com"
