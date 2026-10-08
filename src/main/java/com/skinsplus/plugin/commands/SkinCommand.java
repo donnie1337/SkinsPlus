@@ -1,16 +1,24 @@
 package com.skinsplus.plugin.commands;
 
+import com.skinsplus.plugin.skin.SkinService;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public final class SkinCommand implements CommandExecutor, TabCompleter {
+
+    private final SkinService skins;
+
+    public SkinCommand(SkinService skins) {
+        this.skins = skins;
+    }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -19,7 +27,42 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        sender.sendMessage(color("&c&lSKINS &8• &fComando ainda não implementado. Use &e/skin ajuda&f."));
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(color("&c&lSKINS &8• &fApenas jogadores podem usar este comando."));
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("reset")) {
+            player.sendMessage(color("&b&lSKINS &8• &fRestaurando sua skin..."));
+            skins.reset(player, result ->
+                    player.sendMessage(color("&a&lSKINS &8• &fSua skin foi restaurada."))
+            );
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("random")
+                || args[0].equalsIgnoreCase("save")
+                || args[0].equalsIgnoreCase("favorites")) {
+            player.sendMessage(color("&e&lSKINS &8• &fEste recurso será adicionado em seguida."));
+            return true;
+        }
+
+        String skinName = args[0];
+        player.sendMessage(color("&b&lSKINS &8• &fBuscando a skin de &b" + skinName + "&f..."));
+
+        skins.applyByName(player, skinName, result -> {
+            switch (result) {
+                case SUCCESS -> player.sendMessage(color(
+                        "&a&lSKINS &8• &fSkin de &a" + skinName + " &faplicada com sucesso!"
+                ));
+                case INVALID_NAME -> player.sendMessage(color(
+                        "&c&lSKINS &8• &fNickname inválido. Use um nome de Minecraft válido."
+                ));
+                case NOT_FOUND -> player.sendMessage(color(
+                        "&c&lSKINS &8• &fNão foi possível encontrar uma skin para &c" + skinName + "&f."
+                ));
+            }
+        });
         return true;
     }
 
@@ -27,7 +70,7 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("");
         sender.sendMessage(color("&b&lSKINS &8• &fAjuda"));
         sender.sendMessage("");
-        sender.sendMessage(color("&8» &f/skin <nome> &8- &7Aplica uma skin pelo nome."));
+        sender.sendMessage(color("&8» &f/skin <nome> &8- &7Aplica uma skin pelo nickname."));
         sender.sendMessage(color("&8» &f/skin reset &8- &7Restaura sua skin padrão."));
         sender.sendMessage(color("&8» &f/skin random &8- &7Aplica uma skin aleatória."));
         sender.sendMessage(color("&8» &f/skin save <nome> &8- &7Salva a skin atual."));
