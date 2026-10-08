@@ -87,7 +87,7 @@ public final class SkinService {
     private void applyTextures(Player player, PlayerTextures textures) {
         PlayerProfile target = player.getPlayerProfile();
         target.setTextures(textures);
-        player.setPlayerProfile(target);
+        player.setPlayerProfile((com.destroystokyo.paper.profile.PlayerProfile) (Object) target);
     }
 
     private void clearSkin(Player player) {
