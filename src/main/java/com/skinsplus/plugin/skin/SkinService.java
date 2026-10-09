@@ -183,6 +183,35 @@ public final class SkinService {
         PlayerProfile target = player.getPlayerProfile();
         target.setTextures(textures);
         player.setPlayerProfile((com.destroystokyo.paper.profile.PlayerProfile) (Object) target);
+
+        // setPlayerProfile re-registra o jogador para os clientes. Isso pode
+        // invalidar visualmente entidades passageiras usadas por outros plugins,
+        // como a nametag customizada do CargoPlus. Recriamos essa nametag logo
+        // depois para que ela continue acompanhando o jogador.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> refreshCargoNametag(player), 2L);
+    }
+
+    private void refreshCargoNametag(Player player) {
+        if (player == null || !player.isOnline()) return;
+        var cargoPlus = Bukkit.getPluginManager().getPlugin("CargoPlus");
+        if (cargoPlus == null || !cargoPlus.isEnabled()) return;
+
+        try {
+            Object nicknameColors = cargoPlus.getClass().getMethod("nicknameColors").invoke(cargoPlus);
+            Object groups = cargoPlus.getClass().getMethod("groups").invoke(cargoPlus);
+            Object permissions = cargoPlus.getClass().getMethod("permissions").invoke(cargoPlus);
+            Object group = permissions.getClass()
+                    .getMethod("getGroup", UUID.class)
+                    .invoke(permissions, player.getUniqueId());
+
+            Class<?> groupServiceClass = Class.forName("com.cargoplus.service.GroupService");
+            nicknameColors.getClass()
+                    .getMethod("refreshAfterProfileUpdate", Player.class, String.class, groupServiceClass)
+                    .invoke(nicknameColors, player, group == null ? null : String.valueOf(group), groups);
+        } catch (ReflectiveOperationException | LinkageError exception) {
+            plugin.getLogger().warning("Não foi possível atualizar a nametag do CargoPlus após trocar a skin de "
+                    + player.getName() + ": " + exception.getMessage());
+        }
     }
 
     private void clearSkin(Player player) {
