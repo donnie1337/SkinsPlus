@@ -4,6 +4,7 @@ main: com.skinsplus.plugin.SkinsPlusPlugin
 api-version: '26.3'
 author: donnie1337
 description: Sistema de skins para Paper 26.3 com cache e suporte a servidores offline-mode.
+softdepend: [LoginPlus]
 
 commands:
   skin:
