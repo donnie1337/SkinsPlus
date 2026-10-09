@@ -351,6 +351,13 @@ public final class SkinService {
         if (cargoPlus == null || !cargoPlus.isEnabled()) return;
 
         try {
+            Object authenticated = cargoPlus.getClass()
+                    .getMethod("isAuthenticated", Player.class)
+                    .invoke(cargoPlus, player);
+            if (!(authenticated instanceof Boolean) || !((Boolean) authenticated)) {
+                return;
+            }
+
             Object nicknameColors = cargoPlus.getClass().getMethod("nicknameColors").invoke(cargoPlus);
             Object groups = cargoPlus.getClass().getMethod("groups").invoke(cargoPlus);
             Object permissions = cargoPlus.getClass().getMethod("permissions").invoke(cargoPlus);
