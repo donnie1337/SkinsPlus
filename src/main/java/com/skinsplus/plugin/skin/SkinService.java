@@ -3,9 +3,6 @@ package com.skinsplus.plugin.skin;
 import com.skinsplus.plugin.SkinsPlusPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import io.papermc.paper.event.connection.configuration.PlayerConnectionReconfigureEvent;
 import org.bukkit.profile.PlayerProfile;
 import org.bukkit.profile.PlayerTextures;
 
@@ -20,7 +17,6 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
@@ -28,7 +24,7 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class SkinService implements Listener {
+public final class SkinService {
 
     private static final Pattern ID_PATTERN = Pattern.compile(
             "\"id\"\\s*:\\s*\"([0-9a-fA-F]{32})\""
@@ -48,7 +44,6 @@ public final class SkinService implements Listener {
 
     private final SkinsPlusPlugin plugin;
     private final Map<String, PlayerTextures> cache = new ConcurrentHashMap<>();
-    private final Set<String> pendingClientRefresh = ConcurrentHashMap.newKeySet();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -261,43 +256,11 @@ public final class SkinService implements Listener {
         // invalidar visualmente entidades passageiras usadas por outros plugins,
         // como a nametag customizada do CargoPlus. Recriamos essa nametag logo
         // depois para que ela continue acompanhando o jogador.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            refreshCargoNametag(player);
-            refreshOwnClientSkin(player);
-        }, 2L);
-    }
-
-    /**
-     * setPlayerProfile atualiza os outros clientes que enxergam o jogador, mas o
-     * próprio cliente pode continuar renderizando a skin anterior em terceira
-     * pessoa. No Paper 26.3, reentrar rapidamente no estágio de configuração
-     * força o cliente local a reconstruir a entidade do jogador com o novo perfil.
-     */
-    private void refreshOwnClientSkin(Player player) {
-        if (player == null || !player.isOnline()) return;
-        pendingClientRefresh.add(player.getName().toLowerCase(Locale.ROOT));
-        try {
-            player.getConnection().reenterConfiguration();
-        } catch (RuntimeException exception) {
-            pendingClientRefresh.remove(player.getName().toLowerCase(Locale.ROOT));
-            plugin.getLogger().warning("Não foi possível atualizar a skin no próprio cliente de "
-                    + player.getName() + ": " + exception.getMessage());
-        }
-    }
-
-    @EventHandler
-    public void onReconfigure(PlayerConnectionReconfigureEvent event) {
-        String name = event.getConnection().getProfile().getName();
-        if (name == null || !pendingClientRefresh.remove(name.toLowerCase(Locale.ROOT))) return;
-
-        event.getConnection().completeReconfiguration();
-
-        // A reentrada também recria o jogador para o cliente; refazemos a nametag
-        // customizada depois que ele voltar ao estágio de jogo.
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            Player player = Bukkit.getPlayerExact(name);
-            if (player != null && player.isOnline()) refreshCargoNametag(player);
-        }, 10L);
+        // Não usamos reenterConfiguration() para forçar refresh da própria skin:
+        // durante o estágio de configuração, plugins como CargoPlus podem enviar
+        // pacotes de jogo (ex.: scoreboard teams), o que desconecta o cliente.
+        // setPlayerProfile() já re-registra o perfil para os clientes de forma segura.
+        Bukkit.getScheduler().runTaskLater(plugin, () -> refreshCargoNametag(player), 2L);
     }
 
     private void refreshCargoNametag(Player player) {
