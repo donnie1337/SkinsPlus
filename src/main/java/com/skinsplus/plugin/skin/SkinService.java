@@ -303,6 +303,15 @@ public final class SkinService {
         target.setProperty(new ProfileProperty("textures", skin.value(), skin.signature()));
         player.setPlayerProfile(target);
 
+        // O fluxo moderno do Paper (também usado pelo SkinsRestorer) força uma
+        // atualização de health/food após setPlayerProfile. Isso faz o próprio
+        // cliente concluir o refresh do perfil sem reentrar no estágio de configuração.
+        try {
+            player.sendHealthUpdate();
+        } catch (NoSuchMethodError ignored) {
+            // Compatibilidade defensiva caso a API mude.
+        }
+
         // Mantém a nametag customizada sincronizada depois que o Paper re-registra
         // o perfil do jogador para os clientes.
         Bukkit.getScheduler().runTaskLater(plugin, () -> refreshCargoNametag(player), 2L);
