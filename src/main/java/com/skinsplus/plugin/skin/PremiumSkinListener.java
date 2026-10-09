@@ -37,7 +37,7 @@ public final class PremiumSkinListener implements Listener {
         if (!player.isOnline()) return;
 
         if (isVerifiedPremiumSession(player)) {
-            skins.applyByName(player, player.getName(), result -> {
+            skins.applyOfficialByName(player, player.getName(), result -> {
                 if (result == SkinService.Result.SUCCESS) {
                     plugin.getLogger().fine("Skin oficial restaurada automaticamente para " + player.getName() + ".");
                 } else {
