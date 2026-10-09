@@ -28,12 +28,15 @@ public final class PremiumSkinListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
 
-        // O LoginPlus conclui a autenticação premium logo após o join. Um pequeno atraso
-        // evita competir com esse fluxo e garante que apenas a sessão original validada
-        // receba automaticamente a skin oficial do nickname.
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline() || !isVerifiedPremiumSession(player)) return;
+        // O LoginPlus conclui a autenticação premium após o PlayerJoinEvent.
+        // Tentamos por alguns segundos para evitar corrida entre os dois plugins.
+        tryApplyPremiumSkin(player, 0);
+    }
 
+    private void tryApplyPremiumSkin(Player player, int attempt) {
+        if (!player.isOnline()) return;
+
+        if (isVerifiedPremiumSession(player)) {
             skins.applyByName(player, player.getName(), result -> {
                 if (result == SkinService.Result.SUCCESS) {
                     plugin.getLogger().fine("Skin oficial restaurada automaticamente para " + player.getName() + ".");
@@ -42,7 +45,16 @@ public final class PremiumSkinListener implements Listener {
                             + player.getName() + ": " + result);
                 }
             });
-        }, 20L);
+            return;
+        }
+
+        // Até 10 segundos aguardando a sessão premium ser marcada pelo LoginPlus.
+        if (attempt >= 20) return;
+        plugin.getServer().getScheduler().runTaskLater(
+                plugin,
+                () -> tryApplyPremiumSkin(player, attempt + 1),
+                10L
+        );
     }
 
     private boolean isVerifiedPremiumSession(Player player) {
