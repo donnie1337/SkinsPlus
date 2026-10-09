@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
@@ -47,7 +48,7 @@ public final class SkinService {
     private final SkinsPlusPlugin plugin;
     private final Map<String, SkinData> cache = new ConcurrentHashMap<>();
     private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
+            .connectTimeout(Duration.ofSeconds(8))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
@@ -59,24 +60,24 @@ public final class SkinService {
         if (player == null || !player.isOnline()) return;
 
         CompletableFuture
-                .supplyAsync(this::findRandomNameMcProfile)
-                .whenComplete((skinName, error) ->
+                .supplyAsync(this::findRandomNameMcSkin)
+                .whenComplete((candidate, error) ->
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             if (!player.isOnline()) return;
 
-                            if (error != null || skinName == null || skinName.isBlank()) {
+                            if (error != null || candidate == null) {
                                 callback.accept(Result.NOT_FOUND, null);
                                 return;
                             }
 
-                            applyByName(player, skinName, result ->
-                                    callback.accept(result, result == Result.SUCCESS ? skinName : null)
-                            );
+                            cache.put(candidate.name().toLowerCase(Locale.ROOT), candidate.skin());
+                            applySkinData(player, candidate.skin());
+                            callback.accept(Result.SUCCESS, candidate.name());
                         })
                 );
     }
 
-    private String findRandomNameMcProfile() {
+    private RandomSkinCandidate findRandomNameMcSkin() {
         try {
             String catalogHtml = get("https://namemc.com/minecraft-skins");
 
@@ -92,26 +93,36 @@ public final class SkinService {
                 return null;
             }
 
-            // Tenta alguns resultados aleatórios do catálogo até encontrar um perfil
-            // Minecraft válido associado àquela skin.
             java.util.Collections.shuffle(skinIds);
-            int attempts = Math.min(8, skinIds.size());
+            int attempts = Math.min(12, skinIds.size());
 
             for (int i = 0; i < attempts; i++) {
-                String skinPage = get("https://namemc.com/skin/" + skinIds.get(i));
-                Matcher profileMatcher = NAMEMC_PROFILE_PATTERN.matcher(skinPage);
+                String skinPage;
+                try {
+                    skinPage = get("https://namemc.com/skin/" + skinIds.get(i));
+                } catch (Exception ignored) {
+                    continue;
+                }
 
+                Matcher profileMatcher = NAMEMC_PROFILE_PATTERN.matcher(skinPage);
                 while (profileMatcher.find()) {
                     String name = profileMatcher.group(1);
-                    if (name != null && name.matches("[A-Za-z0-9_]{1,16}")) {
-                        SkinData skin = fetchOfficialSkinData(name);
-                        if (skin != null && !isSlimModel(skin)) {
-                            return name;
-                        }
+                    if (name == null || !name.matches("[A-Za-z0-9_]{1,16}")) continue;
+
+                    // No /skin random, falhas temporárias de rede não poluem o console:
+                    // simplesmente tentamos o próximo perfil/skin do catálogo.
+                    SkinData skin = fetchOfficialSkinData(name, true);
+                    if (skin != null && !isSlimModel(skin)) {
+                        return new RandomSkinCandidate(name, skin);
                     }
                 }
             }
 
+            plugin.getLogger().warning("Não foi possível obter uma skin clássica do NameMC após "
+                    + attempts + " tentativas.");
+            return null;
+        } catch (HttpTimeoutException exception) {
+            plugin.getLogger().warning("Timeout ao consultar o catálogo do NameMC para /skin random.");
             return null;
         } catch (Exception exception) {
             plugin.getLogger().warning("Falha ao procurar skin aleatória no NameMC: " + exception.getMessage());
@@ -207,6 +218,10 @@ public final class SkinService {
     }
 
     private SkinData fetchOfficialSkinData(String skinName) {
+        return fetchOfficialSkinData(skinName, false);
+    }
+
+    private SkinData fetchOfficialSkinData(String skinName, boolean quiet) {
         try {
             String profileJson = get("https://api.mojang.com/users/profiles/minecraft/" + skinName);
             Matcher idMatcher = ID_PATTERN.matcher(profileJson);
@@ -225,14 +240,27 @@ public final class SkinService {
             Matcher signatureMatcher = TEXTURES_SIGNATURE_PATTERN.matcher(sessionJson);
             String signature = signatureMatcher.find() ? signatureMatcher.group(1) : null;
 
-            if (signature == null || signature.isBlank()) {
+            if ((signature == null || signature.isBlank()) && !quiet) {
                 plugin.getLogger().warning("A Mojang retornou uma textura sem assinatura para " + skinName + ".");
             }
             return new SkinData(value, signature);
+        } catch (HttpTimeoutException exception) {
+            if (!quiet) {
+                plugin.getLogger().warning("Timeout ao buscar skin oficial para " + skinName + ".");
+            }
+            return null;
+        } catch (HttpStatusException exception) {
+            if (!quiet && exception.statusCode() != 404) {
+                String kind = exception.statusCode() == 429 ? "rate limit" : "HTTP " + exception.statusCode();
+                plugin.getLogger().warning("Falha ao buscar skin oficial para " + skinName + ": " + kind + ".");
+            }
+            return null;
         } catch (Exception exception) {
-            plugin.getLogger().warning(
-                    "Falha ao buscar skin oficial para " + skinName + ": " + exception.getMessage()
-            );
+            if (!quiet) {
+                plugin.getLogger().warning(
+                        "Falha de rede ao buscar skin oficial para " + skinName + ": " + exception.getMessage()
+                );
+            }
             return null;
         }
     }
@@ -265,7 +293,7 @@ public final class SkinService {
 
     private String get(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(8))
+                .timeout(Duration.ofSeconds(15))
                 .header("User-Agent", "SkinsPlus/1.0")
                 .GET()
                 .build();
@@ -276,7 +304,7 @@ public final class SkinService {
         );
 
         if (response.statusCode() != 200) {
-            throw new IllegalStateException("HTTP " + response.statusCode());
+            throw new HttpStatusException(response.statusCode());
         }
 
         return response.body();
@@ -347,6 +375,21 @@ public final class SkinService {
     }
 
     private record SkinData(String value, String signature) {}
+
+    private record RandomSkinCandidate(String name, SkinData skin) {}
+
+    private static final class HttpStatusException extends Exception {
+        private final int statusCode;
+
+        private HttpStatusException(int statusCode) {
+            super("HTTP " + statusCode);
+            this.statusCode = statusCode;
+        }
+
+        private int statusCode() {
+            return statusCode;
+        }
+    }
 
     public enum Result {
         SUCCESS,
