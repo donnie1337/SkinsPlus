@@ -41,10 +41,10 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args[0].equalsIgnoreCase("random")) {
-            player.sendMessage(color("&b&lSKINS &8• &fEscolhendo uma skin aleatória..."));
+            player.sendMessage(color("&b&lSKINS &8• &fProcurando uma skin aleatória no NameMC..."));
             skins.applyRandom(player, (result, skinName) -> {
                 if (result == SkinService.Result.SUCCESS && skinName != null) {
-                    player.sendMessage(color("&a&lSKINS &8• &fSkin aleatória aplicada: &a" + skinName + "&f."));
+                    player.sendMessage(color("&a&lSKINS &8• &fSkin aleatória do NameMC aplicada: &a" + skinName + "&f."));
                 } else {
                     player.sendMessage(color("&c&lSKINS &8• &fNão foi possível encontrar uma skin aleatória agora."));
                 }
