@@ -93,7 +93,7 @@ public final class SkinService {
     private void clearSkin(Player player) {
         PlayerProfile target = player.getPlayerProfile();
         target.setTextures(null);
-        player.setPlayerProfile(target);
+        player.setPlayerProfile((com.destroystokyo.paper.profile.PlayerProfile) (Object) target);
     }
 
     public enum Result {
