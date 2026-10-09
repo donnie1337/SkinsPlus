@@ -9,3 +9,17 @@ cache:
 namemc:
   enabled: true
   base-url: "https://namemc.com"
+
+
+# Perfis usados pelo /skin random.
+# O plugin embaralha a lista e tenta os perfis até encontrar uma skin válida.
+random-skins:
+  names:
+    - Eliciu
+    - Notch
+    - jeb_
+    - Dinnerbone
+    - Technoblade
+    - Dream
+    - Sapnap
+    - GeorgeNotFound
