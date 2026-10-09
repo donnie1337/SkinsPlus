@@ -34,9 +34,13 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("reset")) {
             player.sendMessage(color("&b&lSKINS &8• &fRestaurando sua skin..."));
-            skins.reset(player, result ->
-                    player.sendMessage(color("&a&lSKINS &8• &fSua skin foi restaurada."))
-            );
+            skins.reset(player, result -> {
+                if (result == SkinService.Result.SUCCESS) {
+                    player.sendMessage(color("&a&lSKINS &8• &fSua skin original do Minecraft foi restaurada."));
+                } else {
+                    player.sendMessage(color("&c&lSKINS &8• &fNão foi possível buscar sua skin original na Mojang."));
+                }
+            });
             return true;
         }
 
