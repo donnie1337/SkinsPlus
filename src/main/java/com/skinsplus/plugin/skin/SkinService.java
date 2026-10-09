@@ -16,13 +16,17 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,6 +53,45 @@ public final class SkinService implements Listener {
 
     public SkinService(SkinsPlusPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    public void applyRandom(Player player, BiConsumer<Result, String> callback) {
+        List<String> configured = new ArrayList<>(plugin.getConfig().getStringList("random-skins.names"));
+        configured.removeIf(name -> name == null || !name.matches("[A-Za-z0-9_]{1,16}"));
+
+        if (configured.isEmpty()) {
+            configured.addAll(List.of(
+                    "Eliciu",
+                    "Notch",
+                    "jeb_",
+                    "Dinnerbone",
+                    "Technoblade",
+                    "Dream",
+                    "Sapnap",
+                    "GeorgeNotFound"
+            ));
+        }
+
+        Collections.shuffle(configured);
+        tryRandomCandidates(player, configured, 0, callback);
+    }
+
+    private void tryRandomCandidates(Player player, List<String> candidates, int index,
+                                     BiConsumer<Result, String> callback) {
+        if (player == null || !player.isOnline()) return;
+        if (index >= candidates.size()) {
+            callback.accept(Result.NOT_FOUND, null);
+            return;
+        }
+
+        String skinName = candidates.get(index);
+        applyByName(player, skinName, result -> {
+            if (result == Result.SUCCESS) {
+                callback.accept(Result.SUCCESS, skinName);
+                return;
+            }
+            tryRandomCandidates(player, candidates, index + 1, callback);
+        });
     }
 
     public void applyByName(Player player, String skinName, Consumer<Result> callback) {
