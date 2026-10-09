@@ -37,13 +37,18 @@ public final class PremiumSkinListener implements Listener {
         if (!player.isOnline()) return;
 
         if (isVerifiedPremiumSession(player)) {
-            skins.applyOfficialByName(player, player.getName(), result -> {
-                if (result == SkinService.Result.SUCCESS) {
-                    plugin.getLogger().fine("Skin oficial restaurada automaticamente para " + player.getName() + ".");
-                } else {
-                    plugin.getLogger().warning("Não foi possível restaurar automaticamente a skin oficial de "
-                            + player.getName() + ": " + result);
-                }
+            // Aguarda mais 1 tick para aplicar por cima do perfil offline criado pelo
+            // Paper e de quaisquer ajustes de login executados no mesmo tick.
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                skins.applyOfficialByName(player, player.getName(), result -> {
+                    if (result == SkinService.Result.SUCCESS) {
+                        plugin.getLogger().fine("Skin oficial restaurada automaticamente para " + player.getName() + ".");
+                    } else {
+                        plugin.getLogger().warning("Não foi possível restaurar automaticamente a skin oficial de "
+                                + player.getName() + ": " + result);
+                    }
+                });
             });
             return;
         }
