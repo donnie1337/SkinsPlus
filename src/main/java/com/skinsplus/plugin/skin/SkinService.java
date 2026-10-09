@@ -25,12 +25,14 @@ import java.util.regex.Pattern;
 
 public final class SkinService {
 
-    private static final Pattern ID_PATTERN = Pattern.compile("\\"id\\"\\s*:\\s*\\"([0-9a-fA-F]{32})\\"");
+    private static final Pattern ID_PATTERN = Pattern.compile(
+            "\"id\"\\s*:\\s*\"([0-9a-fA-F]{32})\""
+    );
     private static final Pattern TEXTURES_VALUE_PATTERN = Pattern.compile(
-            "\\"name\\"\\s*:\\s*\\"textures\\"[\\s\\S]*?\\"value\\"\\s*:\\s*\\"([^\\"]+)\\""
+            "\"name\"\\s*:\\s*\"textures\"[\\s\\S]*?\"value\"\\s*:\\s*\"([^\"]+)\""
     );
     private static final Pattern SKIN_URL_PATTERN = Pattern.compile(
-            "\\"SKIN\\"\\s*:\\s*\\{[\\s\\S]*?\\"url\\"\\s*:\\s*\\"([^\\"]+)\\""
+            "\"SKIN\"\\s*:\\s*\\{[\\s\\S]*?\"url\"\\s*:\\s*\"([^\"]+)\""
     );
 
     private final SkinsPlusPlugin plugin;
