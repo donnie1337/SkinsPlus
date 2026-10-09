@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -103,7 +104,10 @@ public final class SkinService {
                 while (profileMatcher.find()) {
                     String name = profileMatcher.group(1);
                     if (name != null && name.matches("[A-Za-z0-9_]{1,16}")) {
-                        return name;
+                        SkinData skin = fetchOfficialSkinData(name);
+                        if (skin != null && !isSlimModel(skin)) {
+                            return name;
+                        }
                     }
                 }
             }
@@ -201,6 +205,21 @@ public final class SkinService {
                     "Falha ao buscar skin oficial para " + skinName + ": " + exception.getMessage()
             );
             return null;
+        }
+    }
+
+    private boolean isSlimModel(SkinData skin) {
+        if (skin == null || skin.value() == null || skin.value().isBlank()) return false;
+        try {
+            String textureJson = new String(
+                    Base64.getDecoder().decode(skin.value()),
+                    StandardCharsets.UTF_8
+            );
+            // A Mojang marca braços finos com metadata.model = "slim".
+            // Quando o campo não existe, o modelo é o clássico (Steve, 4 px).
+            return textureJson.matches("(?s).*\\\"model\\\"\\s*:\\s*\\\"slim\\\".*");
+        } catch (IllegalArgumentException exception) {
+            return false;
         }
     }
 
