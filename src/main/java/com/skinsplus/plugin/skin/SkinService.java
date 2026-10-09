@@ -119,6 +119,35 @@ public final class SkinService {
         }
     }
 
+    public void applyOfficialByName(Player player, String skinName, Consumer<Result> callback) {
+        if (player == null || skinName == null || !skinName.matches("[A-Za-z0-9_]{1,16}")) {
+            callback.accept(Result.INVALID_NAME);
+            return;
+        }
+
+        String key = skinName.toLowerCase(Locale.ROOT);
+
+        // Para restaurar a skin original/premium, não reutilizamos o cache:
+        // buscamos a texture property atual diretamente da Mojang para refletir
+        // imediatamente qualquer skin alterada na conta.
+        CompletableFuture
+                .supplyAsync(() -> fetchOfficialSkinData(skinName))
+                .whenComplete((skin, error) ->
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (!player.isOnline()) return;
+
+                            if (error != null || skin == null) {
+                                callback.accept(Result.NOT_FOUND);
+                                return;
+                            }
+
+                            cache.put(key, skin);
+                            applySkinData(player, skin);
+                            callback.accept(Result.SUCCESS);
+                        })
+                );
+    }
+
     public void applyByName(Player player, String skinName, Consumer<Result> callback) {
         if (player == null || skinName == null || !skinName.matches("[A-Za-z0-9_]{1,16}")) {
             callback.accept(Result.INVALID_NAME);
@@ -254,28 +283,16 @@ public final class SkinService {
     }
 
     public void reset(Player player, Consumer<Result> callback) {
-        PlayerProfile lookup;
-        try {
-            lookup = Bukkit.createProfile(player.getName());
-        } catch (IllegalArgumentException exception) {
-            clearSkin(player);
-            callback.accept(Result.SUCCESS);
+        if (player == null) {
+            callback.accept(Result.NOT_FOUND);
             return;
         }
 
-        lookup.update().whenComplete((updated, error) ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!player.isOnline()) return;
-
-                    SkinData skin = error == null && updated != null ? extractSkinData(updated) : null;
-                    if (skin != null) {
-                        applySkinData(player, skin);
-                    } else {
-                        clearSkin(player);
-                    }
-                    callback.accept(Result.SUCCESS);
-                })
-        );
+        // /skin reset significa voltar para a skin ORIGINAL atual da conta
+        // Minecraft deste nickname. Em offline-mode não podemos confiar no
+        // PlayerProfile local do Bukkit, pois ele pode conter a skin temporária
+        // aplicada anteriormente pelo próprio SkinsPlus.
+        applyOfficialByName(player, player.getName(), callback);
     }
 
     private void applySkinData(Player player, SkinData skin) {
