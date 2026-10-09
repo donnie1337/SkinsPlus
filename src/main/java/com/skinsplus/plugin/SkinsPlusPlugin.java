@@ -14,6 +14,7 @@ public final class SkinsPlusPlugin extends JavaPlugin {
         saveDefaultConfig();
 
         this.skinService = new SkinService(this);
+        getServer().getPluginManager().registerEvents(skinService, this);
         getServer().getPluginManager().registerEvents(new PremiumSkinListener(this, skinService), this);
 
         SkinCommand skinCommand = new SkinCommand(skinService);
