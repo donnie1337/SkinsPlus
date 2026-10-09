@@ -28,29 +28,29 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
         }
 
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(color("&c&lSKINS &8• &fApenas jogadores podem usar este comando."));
+            sender.sendMessage(color("&b[Skins] &r&fApenas jogadores podem usar este comando."));
             return true;
         }
 
         if (args[0].equalsIgnoreCase("reset")) {
-            player.sendMessage(color("&b&lSKINS &8• &fRestaurando sua skin..."));
+            player.sendMessage(color("&b[Skins] &r&eRestaurando sua skin..."));
             skins.reset(player, result -> {
                 if (result == SkinService.Result.SUCCESS) {
-                    player.sendMessage(color("&a&lSKINS &8• &fSua skin original do Minecraft foi restaurada."));
+                    player.sendMessage(color("&b[Skins] &r&fSua skin original do Minecraft foi restaurada."));
                 } else {
-                    player.sendMessage(color("&c&lSKINS &8• &fNão foi possível buscar sua skin original na Mojang."));
+                    player.sendMessage(color("&b[Skins] &r&fNão foi possível buscar sua skin original na Mojang."));
                 }
             });
             return true;
         }
 
         if (args[0].equalsIgnoreCase("random")) {
-            player.sendMessage(color("&b&lSKINS &8• &fProcurando uma skin aleatória no NameMC..."));
+            player.sendMessage(color("&b[Skins] &r&eProcurando uma skin aleatória no NameMC..."));
             skins.applyRandom(player, (result, skinName) -> {
                 if (result == SkinService.Result.SUCCESS && skinName != null) {
-                    player.sendMessage(color("&a&lSKINS &8• &fSkin aleatória do NameMC aplicada: &a" + skinName + "&f."));
+                    player.sendMessage(color("&b[Skins] &r&fSkin aleatória do NameMC aplicada: &a" + skinName + "&f."));
                 } else {
-                    player.sendMessage(color("&c&lSKINS &8• &fNão foi possível encontrar uma skin aleatória agora."));
+                    player.sendMessage(color("&b[Skins] &r&fNão foi possível encontrar uma skin aleatória agora."));
                 }
             });
             return true;
@@ -58,23 +58,23 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
 
         if (args[0].equalsIgnoreCase("save")
                 || args[0].equalsIgnoreCase("favorites")) {
-            player.sendMessage(color("&e&lSKINS &8• &fEste recurso será adicionado em seguida."));
+            player.sendMessage(color("&b[Skins] &r&fEste recurso será adicionado em seguida."));
             return true;
         }
 
         String skinName = args[0];
-        player.sendMessage(color("&b&lSKINS &8• &fBuscando a skin de &b" + skinName + "&f..."));
+        player.sendMessage(color("&b[Skins] &r&eBuscando a skin de &e" + skinName + "&e..."));
 
         skins.applyByName(player, skinName, result -> {
             switch (result) {
                 case SUCCESS -> player.sendMessage(color(
-                        "&a&lSKINS &8• &fSkin de &a" + skinName + " &faplicada com sucesso!"
+                        "&b[Skins] &r&fSkin de &a" + skinName + " &faplicada com sucesso!"
                 ));
                 case INVALID_NAME -> player.sendMessage(color(
-                        "&c&lSKINS &8• &fNickname inválido. Use um nome de Minecraft válido."
+                        "&b[Skins] &r&fNickname inválido. Use um nome de Minecraft válido."
                 ));
                 case NOT_FOUND -> player.sendMessage(color(
-                        "&c&lSKINS &8• &fNão foi possível encontrar uma skin para &c" + skinName + "&f."
+                        "&b[Skins] &r&fNão foi possível encontrar uma skin para &c" + skinName + "&f."
                 ));
             }
         });
@@ -83,7 +83,7 @@ public final class SkinCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelp(CommandSender sender) {
         sender.sendMessage("");
-        sender.sendMessage(color("&b&lSKINS &8• &fAjuda"));
+        sender.sendMessage(color("&b[Skins] &r&fAjuda"));
         sender.sendMessage("");
         sender.sendMessage(color("&8» &f/skin <nome> &8- &7Aplica uma skin pelo nickname."));
         sender.sendMessage(color("&8» &f/skin reset &8- &7Restaura sua skin padrão."));
