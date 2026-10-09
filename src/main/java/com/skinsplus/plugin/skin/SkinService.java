@@ -1,19 +1,17 @@
 package com.skinsplus.plugin.skin;
 
 import com.skinsplus.plugin.SkinsPlusPlugin;
+import com.destroystokyo.paper.profile.ProfileProperty;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.profile.PlayerProfile;
-import org.bukkit.profile.PlayerTextures;
 
 import java.net.URI;
-import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -32,6 +30,9 @@ public final class SkinService {
     private static final Pattern TEXTURES_VALUE_PATTERN = Pattern.compile(
             "\"name\"\\s*:\\s*\"textures\"[\\s\\S]*?\"value\"\\s*:\\s*\"([^\"]+)\""
     );
+    private static final Pattern TEXTURES_SIGNATURE_PATTERN = Pattern.compile(
+            "\"name\"\\s*:\\s*\"textures\"[\\s\\S]*?\"signature\"\\s*:\\s*\"([^\"]+)\""
+    );
     private static final Pattern SKIN_URL_PATTERN = Pattern.compile(
             "\"SKIN\"\\s*:\\s*\\{[\\s\\S]*?\"url\"\\s*:\\s*\"([^\"]+)\""
     );
@@ -43,7 +44,7 @@ public final class SkinService {
     );
 
     private final SkinsPlusPlugin plugin;
-    private final Map<String, PlayerTextures> cache = new ConcurrentHashMap<>();
+    private final Map<String, SkinData> cache = new ConcurrentHashMap<>();
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -121,9 +122,9 @@ public final class SkinService {
         }
 
         String key = skinName.toLowerCase(Locale.ROOT);
-        PlayerTextures cached = cache.get(key);
-        if (cached != null && !cached.isEmpty()) {
-            applyTextures(player, cached);
+        SkinData cached = cache.get(key);
+        if (cached != null) {
+            applySkinData(player, cached);
             callback.accept(Result.SUCCESS);
             return;
         }
@@ -137,40 +138,42 @@ public final class SkinService {
         }
 
         lookup.update().whenComplete((updated, error) -> {
-            if (error == null && updated != null && !updated.getTextures().isEmpty()) {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!player.isOnline()) return;
-                    PlayerTextures textures = updated.getTextures();
-                    cache.put(key, textures);
-                    applyTextures(player, textures);
-                    callback.accept(Result.SUCCESS);
-                });
-                return;
+            if (error == null && updated != null) {
+                SkinData skin = extractSkinData(updated);
+                if (skin != null) {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) return;
+                        cache.put(key, skin);
+                        applySkinData(player, skin);
+                        callback.accept(Result.SUCCESS);
+                    });
+                    return;
+                }
             }
 
             // Em servidores offline-mode o resolvedor interno do Paper pode não
             // completar alguns perfis por nome. Fazemos um fallback direto aos
             // serviços oficiais da Mojang para resolver UUID e textura.
             CompletableFuture
-                    .supplyAsync(() -> fetchOfficialTextures(skinName))
-                    .whenComplete((textures, fallbackError) ->
+                    .supplyAsync(() -> fetchOfficialSkinData(skinName))
+                    .whenComplete((skin, fallbackError) ->
                             Bukkit.getScheduler().runTask(plugin, () -> {
                                 if (!player.isOnline()) return;
 
-                                if (fallbackError != null || textures == null || textures.isEmpty()) {
+                                if (fallbackError != null || skin == null) {
                                     callback.accept(Result.NOT_FOUND);
                                     return;
                                 }
 
-                                cache.put(key, textures);
-                                applyTextures(player, textures);
+                                cache.put(key, skin);
+                                applySkinData(player, skin);
                                 callback.accept(Result.SUCCESS);
                             })
                     );
         });
     }
 
-    private PlayerTextures fetchOfficialTextures(String skinName) {
+    private SkinData fetchOfficialSkinData(String skinName) {
         try {
             String profileJson = get("https://api.mojang.com/users/profiles/minecraft/" + skinName);
             Matcher idMatcher = ID_PATTERN.matcher(profileJson);
@@ -185,23 +188,31 @@ public final class SkinService {
             Matcher valueMatcher = TEXTURES_VALUE_PATTERN.matcher(sessionJson);
             if (!valueMatcher.find()) return null;
 
-            byte[] decoded = Base64.getDecoder().decode(valueMatcher.group(1));
-            String textureJson = new String(decoded, StandardCharsets.UTF_8);
+            String value = valueMatcher.group(1);
+            Matcher signatureMatcher = TEXTURES_SIGNATURE_PATTERN.matcher(sessionJson);
+            String signature = signatureMatcher.find() ? signatureMatcher.group(1) : null;
 
-            Matcher skinMatcher = SKIN_URL_PATTERN.matcher(textureJson);
-            if (!skinMatcher.find()) return null;
-
-            URL skinUrl = URI.create(skinMatcher.group(1)).toURL();
-            PlayerProfile textureHolder = Bukkit.createProfile(UUID.randomUUID(), "SkinsPlus");
-            PlayerTextures textures = textureHolder.getTextures();
-            textures.setSkin(skinUrl);
-            return textures;
+            if (signature == null || signature.isBlank()) {
+                plugin.getLogger().warning("A Mojang retornou uma textura sem assinatura para " + skinName + ".");
+            }
+            return new SkinData(value, signature);
         } catch (Exception exception) {
             plugin.getLogger().warning(
                     "Falha ao buscar skin oficial para " + skinName + ": " + exception.getMessage()
             );
             return null;
         }
+    }
+
+    private SkinData extractSkinData(PlayerProfile profile) {
+        if (!(profile instanceof com.destroystokyo.paper.profile.PlayerProfile paperProfile)) return null;
+        for (ProfileProperty property : paperProfile.getProperties()) {
+            if (!"textures".equals(property.getName())) continue;
+            String value = property.getValue();
+            if (value == null || value.isBlank()) continue;
+            return new SkinData(value, property.getSignature());
+        }
+        return null;
     }
 
     private String get(String url) throws Exception {
@@ -237,8 +248,9 @@ public final class SkinService {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!player.isOnline()) return;
 
-                    if (error == null && updated != null && !updated.getTextures().isEmpty()) {
-                        applyTextures(player, updated.getTextures());
+                    SkinData skin = error == null && updated != null ? extractSkinData(updated) : null;
+                    if (skin != null) {
+                        applySkinData(player, skin);
                     } else {
                         clearSkin(player);
                     }
@@ -247,19 +259,16 @@ public final class SkinService {
         );
     }
 
-    private void applyTextures(Player player, PlayerTextures textures) {
-        PlayerProfile target = player.getPlayerProfile();
-        target.setTextures(textures);
-        player.setPlayerProfile((com.destroystokyo.paper.profile.PlayerProfile) (Object) target);
+    private void applySkinData(Player player, SkinData skin) {
+        if (player == null || skin == null) return;
 
-        // setPlayerProfile re-registra o jogador para os clientes. Isso pode
-        // invalidar visualmente entidades passageiras usadas por outros plugins,
-        // como a nametag customizada do CargoPlus. Recriamos essa nametag logo
-        // depois para que ela continue acompanhando o jogador.
-        // Não usamos reenterConfiguration() para forçar refresh da própria skin:
-        // durante o estágio de configuração, plugins como CargoPlus podem enviar
-        // pacotes de jogo (ex.: scoreboard teams), o que desconecta o cliente.
-        // setPlayerProfile() já re-registra o perfil para os clientes de forma segura.
+        com.destroystokyo.paper.profile.PlayerProfile target = player.getPlayerProfile();
+        target.removeProperty("textures");
+        target.setProperty(new ProfileProperty("textures", skin.value(), skin.signature()));
+        player.setPlayerProfile(target);
+
+        // Mantém a nametag customizada sincronizada depois que o Paper re-registra
+        // o perfil do jogador para os clientes.
         Bukkit.getScheduler().runTaskLater(plugin, () -> refreshCargoNametag(player), 2L);
     }
 
@@ -287,10 +296,12 @@ public final class SkinService {
     }
 
     private void clearSkin(Player player) {
-        PlayerProfile target = player.getPlayerProfile();
-        target.setTextures(null);
-        player.setPlayerProfile((com.destroystokyo.paper.profile.PlayerProfile) (Object) target);
+        com.destroystokyo.paper.profile.PlayerProfile target = player.getPlayerProfile();
+        target.removeProperty("textures");
+        player.setPlayerProfile(target);
     }
+
+    private record SkinData(String value, String signature) {}
 
     public enum Result {
         SUCCESS,
