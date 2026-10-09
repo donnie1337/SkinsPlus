@@ -16,10 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collections;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -42,6 +39,12 @@ public final class SkinService implements Listener {
     private static final Pattern SKIN_URL_PATTERN = Pattern.compile(
             "\"SKIN\"\\s*:\\s*\\{[\\s\\S]*?\"url\"\\s*:\\s*\"([^\"]+)\""
     );
+    private static final Pattern NAMEMC_SKIN_LINK_PATTERN = Pattern.compile(
+            "href=\\\"/skin/([0-9a-fA-F]{16})\\\""
+    );
+    private static final Pattern NAMEMC_PROFILE_PATTERN = Pattern.compile(
+            "href=\\\"/profile/([A-Za-z0-9_]{1,16})\\.[0-9]+\\\""
+    );
 
     private final SkinsPlusPlugin plugin;
     private final Map<String, PlayerTextures> cache = new ConcurrentHashMap<>();
@@ -56,42 +59,64 @@ public final class SkinService implements Listener {
     }
 
     public void applyRandom(Player player, BiConsumer<Result, String> callback) {
-        List<String> configured = new ArrayList<>(plugin.getConfig().getStringList("random-skins.names"));
-        configured.removeIf(name -> name == null || !name.matches("[A-Za-z0-9_]{1,16}"));
+        if (player == null || !player.isOnline()) return;
 
-        if (configured.isEmpty()) {
-            configured.addAll(List.of(
-                    "Eliciu",
-                    "Notch",
-                    "jeb_",
-                    "Dinnerbone",
-                    "Technoblade",
-                    "Dream",
-                    "Sapnap",
-                    "GeorgeNotFound"
-            ));
-        }
+        CompletableFuture
+                .supplyAsync(this::findRandomNameMcProfile)
+                .whenComplete((skinName, error) ->
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (!player.isOnline()) return;
 
-        Collections.shuffle(configured);
-        tryRandomCandidates(player, configured, 0, callback);
+                            if (error != null || skinName == null || skinName.isBlank()) {
+                                callback.accept(Result.NOT_FOUND, null);
+                                return;
+                            }
+
+                            applyByName(player, skinName, result ->
+                                    callback.accept(result, result == Result.SUCCESS ? skinName : null)
+                            );
+                        })
+                );
     }
 
-    private void tryRandomCandidates(Player player, List<String> candidates, int index,
-                                     BiConsumer<Result, String> callback) {
-        if (player == null || !player.isOnline()) return;
-        if (index >= candidates.size()) {
-            callback.accept(Result.NOT_FOUND, null);
-            return;
-        }
+    private String findRandomNameMcProfile() {
+        try {
+            String catalogHtml = get("https://namemc.com/minecraft-skins");
 
-        String skinName = candidates.get(index);
-        applyByName(player, skinName, result -> {
-            if (result == Result.SUCCESS) {
-                callback.accept(Result.SUCCESS, skinName);
-                return;
+            java.util.List<String> skinIds = new java.util.ArrayList<>();
+            Matcher skinMatcher = NAMEMC_SKIN_LINK_PATTERN.matcher(catalogHtml);
+            while (skinMatcher.find()) {
+                String id = skinMatcher.group(1);
+                if (!skinIds.contains(id)) skinIds.add(id);
             }
-            tryRandomCandidates(player, candidates, index + 1, callback);
-        });
+
+            if (skinIds.isEmpty()) {
+                plugin.getLogger().warning("O catálogo do NameMC não retornou skins para o /skin random.");
+                return null;
+            }
+
+            // Tenta alguns resultados aleatórios do catálogo até encontrar um perfil
+            // Minecraft válido associado àquela skin.
+            java.util.Collections.shuffle(skinIds);
+            int attempts = Math.min(8, skinIds.size());
+
+            for (int i = 0; i < attempts; i++) {
+                String skinPage = get("https://namemc.com/skin/" + skinIds.get(i));
+                Matcher profileMatcher = NAMEMC_PROFILE_PATTERN.matcher(skinPage);
+
+                while (profileMatcher.find()) {
+                    String name = profileMatcher.group(1);
+                    if (name != null && name.matches("[A-Za-z0-9_]{1,16}")) {
+                        return name;
+                    }
+                }
+            }
+
+            return null;
+        } catch (Exception exception) {
+            plugin.getLogger().warning("Falha ao procurar skin aleatória no NameMC: " + exception.getMessage());
+            return null;
+        }
     }
 
     public void applyByName(Player player, String skinName, Consumer<Result> callback) {
